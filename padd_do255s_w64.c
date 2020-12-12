@@ -1,0 +1,803 @@
+/*
+ * This file is meant to be included, not compiled by itself.
+ * Caller must have included/defined the following prior to inclusion:
+ *
+ *  - included "do255.h"
+ *  - defined gf and operations, including gf_sqrt() or gf_issquare()
+ *
+ * This file is for all implementations of do255s that use 64-bit limbs.
+ * It defines:
+ *  - do255s_neutral
+ *  - do255s_generator
+ *  - do255s_decode()
+ *  - do255s_encode()
+ *  - do255s_is_neutral()
+ *  - do255s_eq()
+ *  - do255s_add()
+ *  - do255s_double()
+ *  - do255s_double_x()
+ */
+
+/* a */
+static const gf CURVE_A = {
+	0xFFFFFFFFFFFFF08A,
+	0xFFFFFFFFFFFFFFFF,
+	0xFFFFFFFFFFFFFFFF,
+	0x7FFFFFFFFFFFFFFF
+};
+
+/* 4*b */
+static const gf CURVE_4B = {
+	2, 0, 0, 0
+};
+
+/* see do255.h */
+const do255s_point do255s_generator = {
+	{ {
+		0x4803AC7D33B156B1,
+		0x3EF832265840B591,
+		0x213759ECCB010B9D,
+		0x39BD72651783FB6D
+	} },
+	{ {
+		0xAAAAAAAAAAAAA584,
+		0xAAAAAAAAAAAAAAAA,
+		0xAAAAAAAAAAAAAAAA,
+		0x2AAAAAAAAAAAAAAA
+	} },
+	{ { 1, 0, 0, 0 } }
+};
+
+/*
+ * Custom structure for a point in affine coordinates:
+ *  - if X = 0, then this is the neutral (W is ignored);
+ *  - if X != 0, then coordinate Z is implicitly equal to 1.
+ */
+typedef struct {
+	do255_int256 X, W;
+} do255s_point_affine;
+
+/* Precomputed windows for the generator. */
+static const do255s_point_affine window_G[] = {
+	/* 1 */
+	{
+		{ { 0x4803AC7D33B156B1, 0x3EF832265840B591,
+		    0x213759ECCB010B9D, 0x39BD72651783FB6D } },
+		{ { 0xAAAAAAAAAAAAA584, 0xAAAAAAAAAAAAAAAA,
+		    0xAAAAAAAAAAAAAAAA, 0x2AAAAAAAAAAAAAAA } }
+	},
+	/* 2 */
+	{
+		{ { 0x8C6318C6318C5721, 0x18C6318C6318C631,
+		    0x318C6318C6318C63, 0x6318C6318C6318C6 } },
+		{ { 0x7311544E5C3E5011, 0x3667EAC42F5E574B,
+		    0x6DC59919A4176AA4, 0x701BB8203F062A69 } }
+	},
+	/* 3 */
+	{
+		{ { 0xC92EA6A45AF542C8, 0xACA2B1F0EB2EBB62,
+		    0x16AA9AB4772D49BF, 0x586E82D468993FDF } },
+		{ { 0xB0E2616D07647DD6, 0x79835A85D9B70D8F,
+		    0x39545AAB733292C6, 0x27A19C073EE92301 } }
+	},
+	/* 4 */
+	{
+		{ { 0xB21E437C0F24B43F, 0xE352D46A2A191529,
+		    0x5105F27F8E691D57, 0x203E742185ABD1BC } },
+		{ { 0x0AA6E498AFC4CC85, 0x34CABA8351FC11F0,
+		    0x09F86D5B2BD1700A, 0x537BA3D40924022E } }
+	},
+	/* 5 */
+	{
+		{ { 0xD4C604388FAAFD54, 0x478144CACA27D2A0,
+		    0x4B4B7554A3381C38, 0x78CC3E71A8C94117 } },
+		{ { 0x9819FEFFB48175C6, 0xEB222706A19AC3DD,
+		    0x410723C5BE5D5845, 0x3C18C25DF4EA9551 } }
+	},
+	/* 6 */
+	{
+		{ { 0x0F8CCA9A5D8AEC75, 0x2337B2C5F00CFF35,
+		    0x4C38E25760F3A520, 0x5B8B19C1B38EC25A } },
+		{ { 0x5E273AB277A6F073, 0xDFCD0E545019A510,
+		    0xB4D344CB7DE61215, 0x20CB4C0BE6CE27C4 } }
+	},
+	/* 7 */
+	{
+		{ { 0xE45744799916AE56, 0xAB719188444F94C0,
+		    0x8BCF3B53F4727AB0, 0x239A8F014119EE4B } },
+		{ { 0x6D72E617646D9E07, 0xE08B7A2B9844C50F,
+		    0x164E30CF18FDB104, 0x44C18E58F1A5F7AF } }
+	},
+	/* 8 */
+	{
+		{ { 0x486D0418D4089F3F, 0x415C30647E21EC49,
+		    0xDB2F693C6C060489, 0x475F06F55E1CF582 } },
+		{ { 0x716647F988DF33A3, 0xFA6FD869A7CEE964,
+		    0xDB2F9858F220CA25, 0x7F45D8FB03825F9C } }
+	},
+	/* 9 */
+	{
+		{ { 0x6F20F664F35EBE0B, 0x72C56CBCBBE70025,
+		    0x1B8A888E7A1BC6B3, 0x3AE1B93B4536C750 } },
+		{ { 0x8952D2A9DD9C2BCC, 0xF5DA264D49EF49CB,
+		    0xAD270B422A4F8A38, 0x78F62E180A6E3986 } }
+	},
+	/* 10 */
+	{
+		{ { 0x0B77022F05D906A1, 0x36553987A9763928,
+		    0x90C0593CD952E579, 0x601889E506ECA253 } },
+		{ { 0x273BD4BD30ED2DED, 0x222B7CB550375EA6,
+		    0x375976D993C78BC8, 0x18B084F5D6B1DAFA } }
+	},
+	/* 11 */
+	{
+		{ { 0xFC96E106BF390F8E, 0x87F4FE12D17AC934,
+		    0x20DD4A1C455D2425, 0x0F489EA0CF96C239 } },
+		{ { 0x3F7E226E3512C58A, 0xC44C89C9E83EFE42,
+		    0xB9E17C3BF2137EC0, 0x3CF2AACDFDDB2B1D } }
+	},
+	/* 12 */
+	{
+		{ { 0x116E4C0180B4DDCF, 0xD965D1AE088C285B,
+		    0xCE5A14DBF0E43F69, 0x2BCC8378CC7BF398 } },
+		{ { 0xFE21145C707DB568, 0x05499CC63C0E4257,
+		    0x3FB7EC2DCB1E187F, 0x02A575B60EA27DE1 } }
+	},
+	/* 13 */
+	{
+		{ { 0xBB832D11959A60E5, 0xF3AF5A147660C5E6,
+		    0x1037C50FE1FAFA73, 0x251739F159A18E7B } },
+		{ { 0xC611B8215A7DE759, 0x958D80A0A6307017,
+		    0x58717037E45D5DD5, 0x4C6EA6D5ECC46A53 } }
+	},
+	/* 14 */
+	{
+		{ { 0x238B24170CD243C2, 0xF20B2474CC7B0C22,
+		    0xD1AF972D83B667A6, 0x1BC20D835A45EA4E } },
+		{ { 0x9156BD623979E8C5, 0x0DC398312917B521,
+		    0xADFDC3EA49BE6B11, 0x71B74A4CC6854B51 } }
+	},
+	/* 15 */
+	{
+		{ { 0x725096F4FAC9FD25, 0x4072199CA8F661BC,
+		    0x1E3D756A54E4B489, 0x36A82923B7C5D81C } },
+		{ { 0x0E7071C300CF6A28, 0x738D92CE822D2881,
+		    0x85798A741DCCB0F9, 0x13E1D3C237073682 } }
+	},
+	/* 16 */
+	{
+		{ { 0x6ACF66F7D508BB00, 0xFC3A8030127F8808,
+		    0x70481A4C6305A579, 0x30664839BD04AA0E } },
+		{ { 0x5D419AD45E49162B, 0x78530FAA238BED1D,
+		    0xA765AE1A31C8C7C7, 0x67207D6BCEDE5E8D } }
+	}
+};
+static const do255s_point_affine window_G65[] = {
+	/* 1 */
+	{
+		{ { 0xE3AD260DF7B2D34D, 0xEF4C98E564E44AEC,
+		    0x41B749AF25234018, 0x0722EF995D77E307 } },
+		{ { 0x02784B47BB760285, 0x674B8473675F77EC,
+		    0x5F71BB6FD6CEEED4, 0x34D9863658D994F1 } }
+	},
+	/* 2 */
+	{
+		{ { 0x2ADA4E59EECB8F77, 0xD577FCEA354A3FA3,
+		    0xE3E9AA4AC41ABDB8, 0x0FA4D0D00D3E7390 } },
+		{ { 0x903B4E226CF3E045, 0x8F6A1B46C979F4C6,
+		    0x751E1AD619C37B18, 0x2BF70C62B6C5C58B } }
+	},
+	/* 3 */
+	{
+		{ { 0x83437B3B44A76584, 0x85337A5B5EA37019,
+		    0x0AF40A3CBACBCA6E, 0x6129FB017ECE3AE0 } },
+		{ { 0xE2AF05AD8AFDFB16, 0x00D46F68DA602A72,
+		    0x06730D417B2FCA11, 0x4A9C28F6AE0247FC } }
+	},
+	/* 4 */
+	{
+		{ { 0x417B5BE5A8BA33DF, 0x1146B966C729E5BE,
+		    0xF19DEF75C9837F83, 0x4B20562C0C99B2FC } },
+		{ { 0x7C1122BA8B0DF192, 0x3BD15C550975002A,
+		    0x2186EFEC5A7A5DB3, 0x0BFBF827EB3A7184 } }
+	},
+	/* 5 */
+	{
+		{ { 0x683D5AAFCFBCBF77, 0xB0B9F38491FC818E,
+		    0x8DDC79CDFA3B9EB3, 0x406A80209ECB5A2E } },
+		{ { 0x0FC956EAED1400DC, 0x49A99449A1A183DB,
+		    0xCFB6E81A1CEC0EB6, 0x3B8FC5CB45689F66 } }
+	},
+	/* 6 */
+	{
+		{ { 0xE7DCEDC9830F3BCC, 0x3190BB8BF13D83C2,
+		    0xB348EAB92E361E5B, 0x21A00B1A4B6B4CCB } },
+		{ { 0x7CCA5DD148A62EC4, 0x4976F19126149D64,
+		    0x52CA5C0F7806ED00, 0x46197C9A5AFF57AF } }
+	},
+	/* 7 */
+	{
+		{ { 0x118E74003C58146D, 0x4E183A0D59D45A86,
+		    0x88CF58B85D8DD179, 0x1FCC2FD8D59414BA } },
+		{ { 0x25ADAEE7B204825F, 0x742276389FE519BB,
+		    0x98A6201F826C29CF, 0x20A335D337550CCF } }
+	},
+	/* 8 */
+	{
+		{ { 0xAB758A963FCB67D3, 0xBDBFF8BDCDDC7179,
+		    0x63A4D2686CFABF15, 0x63CC5473DD3F5036 } },
+		{ { 0x3F58102CACC682DD, 0x2467D99D40B8A1FE,
+		    0x44CD9320B7FA3948, 0x207788462BE93590 } }
+	},
+	/* 9 */
+	{
+		{ { 0x9AFED28D850C23A5, 0x4E28F84F5436536D,
+		    0x493B602C85203364, 0x0A73A163C1F86147 } },
+		{ { 0x1E593DEA74E1F5D4, 0x3E5B65DCC562E485,
+		    0xB79068BE3A9F5F3B, 0x2DEA68D0AF14F901 } }
+	},
+	/* 10 */
+	{
+		{ { 0x6D73DF10948A18DB, 0xCE6F829C7226AFF4,
+		    0x27E81B57F40362F2, 0x37BFD38BEC948817 } },
+		{ { 0x02481440E009C5E0, 0xD24D3DD62BC7E720,
+		    0xA88DCAADFB7E68DC, 0x5A8B1AF2742C574D } }
+	},
+	/* 11 */
+	{
+		{ { 0x511B8BB2C326919C, 0x36D06F274827CD94,
+		    0xFA874F760A089D6F, 0x796CE68B71B33782 } },
+		{ { 0xE11EA611D883026E, 0x7D2395286283DD1B,
+		    0xF9E10B475FB3866F, 0x25EBAEC1DB6ADABE } }
+	},
+	/* 12 */
+	{
+		{ { 0x5C39D1FD89DD2FE7, 0x56D5F374BD997B36,
+		    0xCBC4F497125C9FBD, 0x2EF79073F850836A } },
+		{ { 0x697FA1E0B2EA2C28, 0x2A6CFB662ADF7C4A,
+		    0x0C39C91270C7D2AE, 0x58CF07052B6379FB } }
+	},
+	/* 13 */
+	{
+		{ { 0x77ACC4B81316F86D, 0x69DD38B0F257E592,
+		    0x0F58657B866FB0D8, 0x3C39314BB1A846EE } },
+		{ { 0xF3E5CC26AC461509, 0x76F1B5F045267B7B,
+		    0xB2C8E6B2507846DE, 0x7F0417274FCC0A3C } }
+	},
+	/* 14 */
+	{
+		{ { 0xCE74D3864A444AF9, 0x0C0F7567E10119D1,
+		    0x1A156CF7026B694A, 0x33D0491E8BCF686E } },
+		{ { 0xF1AEC51BCF52BF80, 0x2A32AD2D1EBA9AD6,
+		    0x6499A317C2E4E391, 0x35B05E8283234CA0 } }
+	},
+	/* 15 */
+	{
+		{ { 0x5D0726CD57A859A3, 0x39BB1C2D84086050,
+		    0x25E41A2638CFB70C, 0x455E456EBF8F2E0B } },
+		{ { 0xFCB0FD536E329C10, 0x2130224A1A1CB84B,
+		    0x7C1482C5F043452C, 0x376B345DB9F928E1 } }
+	},
+	/* 16 */
+	{
+		{ { 0x492AFE097556579D, 0x13B540A021705957,
+		    0xFDFA5CC01C264FF7, 0x1053932D99A6BBCD } },
+		{ { 0xE3C51AE0F6BD20BB, 0x057FC402AA236CB1,
+		    0x9A5BDC70DC177086, 0x45CD5A2B8D364BF4 } }
+	}
+};
+static const do255s_point_affine window_G130[] = {
+	/* 1 */
+	{
+		{ { 0xD9AB2AB4313E150A, 0xAF3680D8923D8F48,
+		    0x8FE12E041CE8DFAF, 0x254561A8AEB11CAB } },
+		{ { 0x9FA5CE6B9BC36E11, 0x365A4759C4C6B597,
+		    0xC381D92E218EE6B1, 0x61878956FFFB0E9F } }
+	},
+	/* 2 */
+	{
+		{ { 0x9C35A5637F6C8053, 0x5706387FD6021602,
+		    0x0AF3C1470C1697F6, 0x7847E5A5A7420D24 } },
+		{ { 0x247FA839693C216C, 0x9F1A1C6F227D9686,
+		    0xC9754112E0BCB5DA, 0x5184C659A79828C4 } }
+	},
+	/* 3 */
+	{
+		{ { 0xFCB2125561D1D07F, 0x75909948DD63D9AC,
+		    0x423F60D1CF853002, 0x7CA49E6CC1F4B430 } },
+		{ { 0xE21DBF95DBE45367, 0xA86F9496C41A7917,
+		    0x34F3A3170557A285, 0x43655DA0F55B4DE2 } }
+	},
+	/* 4 */
+	{
+		{ { 0xF4E0408E636E5ABA, 0x9CD7416D582A44FA,
+		    0x942DC6F5FEA2C3C6, 0x157D068AE6F5A315 } },
+		{ { 0x6355EFD995B14449, 0x79AE1842854EC821,
+		    0x8C02EF2ADF672713, 0x2F013B36060CC839 } }
+	},
+	/* 5 */
+	{
+		{ { 0x5AC5803793462B8A, 0x1260408E42FAD501,
+		    0x04E6353CE57B6118, 0x2EC28A315514EE0D } },
+		{ { 0x37BB7E98FB4DF023, 0x72B8557617CE8417,
+		    0x0A1BF7B942EC4CBD, 0x0AB071074DD65932 } }
+	},
+	/* 6 */
+	{
+		{ { 0xE3AB9795E746B94F, 0x838E9EFFD0E5D4BB,
+		    0xBF8C188E36E0B9CB, 0x22F1F02E91674AD5 } },
+		{ { 0xC8A05143F2A8ADC1, 0xF16384EC9BC23C71,
+		    0xFD8DB90EC4DA21E5, 0x3346ADC984B4553D } }
+	},
+	/* 7 */
+	{
+		{ { 0xC6E25DCD6722A7DB, 0x41174D150E1112E4,
+		    0x3E4484A32C15C12C, 0x58FBCE703CBFCC0E } },
+		{ { 0xA60154C2B8249E7D, 0xDF1E40ACAB6C17E4,
+		    0x5DFB153B84610A7D, 0x644F2D5A3045A216 } }
+	},
+	/* 8 */
+	{
+		{ { 0x76867E220E1C7387, 0x6876C29D05E6E1C0,
+		    0xBFD4B391E87110E1, 0x613A84AA71E6E57F } },
+		{ { 0x47660BBF625374A7, 0xFF2D849F709359DD,
+		    0x540F70934609B414, 0x4E8442EF82B6C46E } }
+	},
+	/* 9 */
+	{
+		{ { 0x897F189BF41FA232, 0x31DC1F6609C0B63D,
+		    0x8F33869EB9BECA07, 0x6314FEF02F399003 } },
+		{ { 0x02AC5E752E114632, 0x983959A21FE6657A,
+		    0x8CC694B87B80C345, 0x053358F0BB4B127D } }
+	},
+	/* 10 */
+	{
+		{ { 0x2D9B581DC5B282B0, 0xDA006B6A93A610DE,
+		    0xFECD738894842EB5, 0x209F00E9867FED68 } },
+		{ { 0xF530A91EA2CFCDA5, 0xA13EB644710D7ACC,
+		    0xCFC53DE068B19301, 0x1116C2645CC509DE } }
+	},
+	/* 11 */
+	{
+		{ { 0x011BE82B2CE8661D, 0xB271BF01FFE6A835,
+		    0x58CA42537E335CBA, 0x55DE7CA1C28EC9D8 } },
+		{ { 0x7C64F18DBAEA1231, 0xEEA4996C462D4484,
+		    0x89DA2DEE22038D2D, 0x72FCD687E33EAF4F } }
+	},
+	/* 12 */
+	{
+		{ { 0x38933FA3CD39261E, 0x3C3AF9A02BA7FB63,
+		    0x28F0D9086ECFFB4C, 0x7337FC83C49CEF8B } },
+		{ { 0x0584A74A1C3D69E2, 0xAE2E8BD49890EB59,
+		    0xFEF96B89B153957C, 0x70A6A63344E7895B } }
+	},
+	/* 13 */
+	{
+		{ { 0x4CD4A2285435BD02, 0x44E5A2A8E9FCB255,
+		    0x80DD71B6AD674422, 0x1B1EC39B8DDC6546 } },
+		{ { 0x44544C6086159874, 0x379F15CF78DCB02F,
+		    0x7F9625109BB35F18, 0x4042FF743E4E30E0 } }
+	},
+	/* 14 */
+	{
+		{ { 0xC42905109B1A192C, 0x8D33854826E55283,
+		    0xAA6FD4F2FA9558A9, 0x35F24A95D568423A } },
+		{ { 0x8F7ADEFBD9BB84C7, 0x78A7218583F375F0,
+		    0x4806EAE6AF374D3A, 0x28596E2A3F7E0442 } }
+	},
+	/* 15 */
+	{
+		{ { 0x63F85CD360842C43, 0xB125F90D87643CE9,
+		    0xC9FCE0470F0D206F, 0x1C7E6FBE705B59B8 } },
+		{ { 0xBF6B75E8156C423D, 0x66A2200C407660AE,
+		    0x0E7D06DA229240A0, 0x78AD75FE2C47D1FE } }
+	},
+	/* 16 */
+	{
+		{ { 0xB0C3DE6BEBEAEC95, 0x4D695AB6C0E9A3E4,
+		    0x0CA501DA9EAD2ACA, 0x7402B1938309B1CC } },
+		{ { 0x1C5C463A714D17B9, 0x6EC180B5206E097C,
+		    0xC7CCDEEBEB287B10, 0x202D5B994EE43BF4 } }
+	}
+};
+static const do255s_point_affine window_G195[] = {
+	/* 1 */
+	{
+		{ { 0xA5B332AE8B607110, 0xC6A1F5888C5C2A7B,
+		    0x4686BCEF5F176F78, 0x2EEA2C710771051D } },
+		{ { 0x6D0E9F716AE34331, 0xA2D563E37EBB560C,
+		    0x02C47EC213FC17A6, 0x6A77A3055FEC969B } }
+	},
+	/* 2 */
+	{
+		{ { 0xD08B3673DD36C5D6, 0x42875443DFF50CA5,
+		    0x4472B3B100AD977A, 0x71BBE2F8AAAD796C } },
+		{ { 0x65535E40698BF33D, 0xACBC8232684F6F92,
+		    0xBBAE0F5B90D0C62E, 0x33B00A17F8C24E6F } }
+	},
+	/* 3 */
+	{
+		{ { 0x91F7BAAD9ECAFD0C, 0xDF7832A52AEBB19D,
+		    0x72D70D6D53A736B8, 0x4053B80041C9765F } },
+		{ { 0x5B50A6FB8A3C5206, 0x35F2DDC4196EB4DC,
+		    0xA735700F561101BE, 0x0A4CA1D995E9471D } }
+	},
+	/* 4 */
+	{
+		{ { 0x8CFBE62352C0321C, 0x35317478163A7506,
+		    0xB07FB5CF2F0D350C, 0x674624CC5B63BEAB } },
+		{ { 0x54E2D5490A22576D, 0x2ED760683FF99529,
+		    0xFDD1AAF91D014750, 0x44F0E982043FD6A4 } }
+	},
+	/* 5 */
+	{
+		{ { 0x0EFD79AE51CFE627, 0x8D6F3A49D66034F7,
+		    0x4D2C2C01A87347FE, 0x380D6B9FEB08A3F5 } },
+		{ { 0x16391C5DCF229C7C, 0xA876867FAFAF534E,
+		    0xFBDB521356F209F6, 0x44AE529621A5D27B } }
+	},
+	/* 6 */
+	{
+		{ { 0xD179D52E0F60ECF2, 0x98C18C7C19CE5942,
+		    0xAC43B21539169363, 0x373829F1D540D16F } },
+		{ { 0x22AB903018AE9800, 0xC896004FE747F972,
+		    0x7D8B013BD75A89D0, 0x5639D45D113777C9 } }
+	},
+	/* 7 */
+	{
+		{ { 0x88F2BF91C052AA4C, 0xBD6C284630F6316B,
+		    0xA916918E68DB91DB, 0x29BAD78DBC302139 } },
+		{ { 0x5E3381D6C835F7DA, 0x6042EE38957FBAE9,
+		    0x5F9104E0C33E3B1C, 0x438C03C6CA81C0B7 } }
+	},
+	/* 8 */
+	{
+		{ { 0xEFF0E12764994499, 0xE0F075AC08336324,
+		    0xEE9F6C3330900A58, 0x12CFF18E3B68E16E } },
+		{ { 0x60D7F702DA67AEC0, 0x6D39A3768A0C6DB0,
+		    0x91818FE2BDDF4BC5, 0x7D054CD06827B381 } }
+	},
+	/* 9 */
+	{
+		{ { 0x3B36DDD303A56217, 0x56B840E1E5485F22,
+		    0xE35974691ED67A31, 0x14D0AD4AA2B7708D } },
+		{ { 0x16F10C597FC2617F, 0x3A218DD8D8574E2B,
+		    0xFE201C1F3D20D0E5, 0x5C24C753DA0CBA85 } }
+	},
+	/* 10 */
+	{
+		{ { 0x1487FE1D0AAD152B, 0xD389875D9B57CB58,
+		    0x00086A583427927B, 0x10FD1E1939F33683 } },
+		{ { 0xE3669DB5AC3F66F9, 0xAD67BC070D054E70,
+		    0x69652652F0163DB5, 0x13D8FFDA6172BCA1 } }
+	},
+	/* 11 */
+	{
+		{ { 0xBA92EB23B8AB9BE1, 0x369244277FDE0909,
+		    0x603EBECE9890D5AD, 0x640E212BBA557898 } },
+		{ { 0xD472D4959EDC967F, 0x2F753464929CA741,
+		    0x64CE566285554DC4, 0x56E4FF625712E206 } }
+	},
+	/* 12 */
+	{
+		{ { 0x0B9FCE4299AFD948, 0x7CA4BCD2EAA2E0EC,
+		    0xE3FA30C5AC388BA7, 0x606DBE6798462842 } },
+		{ { 0x36F70871A6D16248, 0x84FBF448D9B361C1,
+		    0xEDA1910F7B3C89AA, 0x74EE20A7982E483C } }
+	},
+	/* 13 */
+	{
+		{ { 0x8C25E45F7D80CA97, 0xCC8CB15146620FFB,
+		    0xA4ECCCCE54B3AA7D, 0x5725DEC68B4D2C1D } },
+		{ { 0x96528070E6BC1BBE, 0x1317157020458EF0,
+		    0x3A3DE8FA269B3CDC, 0x53B8417BE8B9B799 } }
+	},
+	/* 14 */
+	{
+		{ { 0x277645546DA86DED, 0x0306A489B4168BAF,
+		    0x70DC32CE22762D79, 0x49450B2E315499A1 } },
+		{ { 0xE23CDD75EC046E17, 0xFE58DAE64E23FB25,
+		    0x20E1FECC5C5C5DD4, 0x039F8E6C33E5075C } }
+	},
+	/* 15 */
+	{
+		{ { 0x7BBF7B434F5F8ED2, 0x41BAB11E135E5808,
+		    0x666BECEDBDB00CD1, 0x5E6B345CAD1A0A15 } },
+		{ { 0xCBC8BA3C3883B936, 0xA95563B868A9200D,
+		    0x1B44C6ACB4C9F31C, 0x1169DD19A4D46C11 } }
+	},
+	/* 16 */
+	{
+		{ { 0x3AC75F22F410E610, 0xC5752B476401C98F,
+		    0x1B6F4E6E58028B0B, 0x794FB7F20AF770CB } },
+		{ { 0x9E55FD270B0553E7, 0x18B501F7F83D6694,
+		    0xF54F201D88444408, 0x55EB242C7D58F621 } }
+	}
+};
+static const do255s_point_affine window_odd_G128[] = {
+	/* 1 */
+	{
+		{ { 0x4D5B37E47635D9CF, 0xAE7E7A89B313CF11,
+		    0xA277DD52A5963E8B, 0x6B925003EAAC2050 } },
+		{ { 0x5DE53387CC1D108C, 0x1B92AB3FC4102FDF,
+		    0x3B38F632FFC65BC6, 0x01AAC5EEBDEA8465 } }
+	},
+	/* 3 */
+	{
+		{ { 0xFB21E7ED777B8F2F, 0x1EE3751840239F37,
+		    0xBE214D43EC00783A, 0x6D6E7DADE49E0AF7 } },
+		{ { 0x8373BB18DF608FBC, 0xCD100440C95742CE,
+		    0xC3F95DCD1E917572, 0x25C181299CDCECBD } }
+	},
+	/* 5 */
+	{
+		{ { 0x8CAB4C3A2AF21E15, 0xC5AE64DF9E9632CD,
+		    0x6A931D2B0FE2775D, 0x0F36BEC89C0049FA } },
+		{ { 0x993D9FD0EB3CF496, 0xC53D312DC0BB21FB,
+		    0xAE76833F15D40A91, 0x780E0C232725408B } }
+	},
+	/* 7 */
+	{
+		{ { 0xF18009269B2990E5, 0x61572BF5279C58A8,
+		    0x1E0218985E0A0DD4, 0x7286BEC0252D00F2 } },
+		{ { 0xBCEA20E41C2DC846, 0xA59EA984BEFC73C5,
+		    0x283FF87E2EEC48A2, 0x4EC4844FF9D49A0F } }
+	},
+	/* 9 */
+	{
+		{ { 0x982D3E3806919B21, 0x67377C5D30280357,
+		    0x275FEB0034E3D766, 0x50DE2E8E79294E1D } },
+		{ { 0x890135722AA76E00, 0x1BA5B63B9269A61B,
+		    0x7A9537CCFB8B2BDB, 0x5ADE24B265A12EA8 } }
+	},
+	/* 11 */
+	{
+		{ { 0xAD7FBE69BD662C6E, 0x4E37A5200F8AE01A,
+		    0x2569FF8350DEB165, 0x6CD49CB383A8B03B } },
+		{ { 0xECD177FD068E0B7B, 0x506ABFD9635AEAC2,
+		    0x1DEE852E7D17368A, 0x4FF0E48E97F1AF8E } }
+	},
+	/* 13 */
+	{
+		{ { 0xCF19BABC756DA3BF, 0x90873C7AC798DBFB,
+		    0x3870B74997840AE5, 0x15461E24956CF079 } },
+		{ { 0x437050980E624384, 0x046FE876FE2EB5BF,
+		    0xF34631D8A0E9F243, 0x6CD7AF4FABBE4B87 } }
+	},
+	/* 15 */
+	{
+		{ { 0x5CA5B722CBAB0243, 0x5A08FD2879864DFF,
+		    0xDC97D186E8D09102, 0x594A1E0688FDE311 } },
+		{ { 0x8C92986E16B6F3F9, 0xA09C1AB78BAD7A68,
+		    0xF22FB7D313032FE8, 0x3C658CD8E3FD70DC } }
+	}
+};
+
+/*
+ * We get do255s_neutral, do255s_decode(), do255s_encode(),
+ * do255s_is_neutral() and do255s_eq() from pcore_w64.c.
+ */
+#include "pcore_w64.c"
+
+/* see do255.h */
+void
+do255s_add(do255s_point *P3,
+	const do255s_point *P1, const do255s_point *P2)
+{
+	gf t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, X3, W3, Z3;
+	uint64_t fz1, fz2;
+
+	/*
+	 * Test whether P1 and/or P2 is neutral.
+	 */
+	fz1 = gf_iszero(&P1->Z.w64);
+	fz2 = gf_iszero(&P2->Z.w64);
+
+	/* t1 <- Z1^2 */
+	gf_sqr_inline(&t1, &P1->Z.w64);
+
+	/* t2 <- Z2^2 */
+	gf_sqr_inline(&t2, &P2->Z.w64);
+
+	/* t3 <- ((Z1 + Z2)^2 - t1 - t2)/2 */
+	gf_add(&t3, &P1->Z.w64, &P2->Z.w64);
+	gf_sqr_inline(&t3, &t3);
+	gf_sub2(&t3, &t3, &t1, &t2);
+	gf_half(&t3, &t3);
+
+	/* t4 <- t3^2 */
+	gf_sqr_inline(&t4, &t3);
+
+	/* t5 <- W1*W2 */
+	gf_mul_inline(&t5, &P1->W.w64, &P2->W.w64);
+
+	/* t6 <- X1*X2 */
+	gf_mul_inline(&t6, &P1->X.w64, &P2->X.w64);
+
+	/* t7 <- (W1 + Z1)*(W2 + Z2) - t3 - t5 */
+	gf_add(&t7, &P1->W.w64, &P1->Z.w64);
+	gf_add(&t8, &P2->W.w64, &P2->Z.w64);
+	gf_mul_inline(&t7, &t7, &t8);
+	gf_sub2(&t7, &t7, &t3, &t5);
+
+	/* t8 <- (X1 + t1)*(X2 + t2) - t4 - t6 */
+	gf_add(&t8, &P1->X.w64, &t1);
+	gf_add(&t9, &P2->X.w64, &t2);
+	gf_mul_inline(&t8, &t8, &t9);
+	gf_sub2(&t8, &t8, &t4, &t6);
+
+	/* Z3 <- (t6 - b*t4)*t7
+	   Also, replace t4 with b*t4 */
+	gf_half(&t4, &t4);
+	gf_sub(&t9, &t6, &t4);
+	gf_mul_inline(&Z3, &t9, &t7);
+
+	/* t9 <- t7^4 */
+	gf_sqr_inline(&t9, &t7);
+	gf_sqr_inline(&t9, &t9);
+
+	/* X3 <- b*t6*t9 */
+	gf_mul_inline(&X3, &t6, &t9);
+	gf_half(&X3, &X3);
+
+	/* t10 <- (t5 + a*t3)*(t6 + b*t4)
+	   a = -1
+	   b*t4 was already computed (in t4)
+	   We overwrite t5 and t6, which we won't need anymore */
+	gf_sub(&t5, &t5, &t3);
+	gf_add(&t6, &t6, &t4);
+	gf_mul_inline(&t10, &t5, &t6);
+
+	/* W3 <- -t10 - 2*b*t3*t8
+	   b = 1/2, hence 2*b = 1.
+	   We overwrite t8. */
+	gf_mul_inline(&t8, &t3, &t8);
+	gf_sub2(&W3, &GF_ZERO, &t10, &t8);
+
+	/*
+	 * If P1 is neutral, replace P3 with P2.
+	 * If P2 is neutral, replace P3 with P1.
+	 */
+	gf_sel3(&P3->X.w64, &P2->X.w64, &P1->X.w64, &X3, fz1, fz2);
+	gf_sel3(&P3->W.w64, &P2->W.w64, &P1->W.w64, &W3, fz1, fz2);
+	gf_sel3(&P3->Z.w64, &P2->Z.w64, &P1->Z.w64, &Z3, fz1, fz2);
+}
+
+/*
+ * Point addition, with the second point in affine coordinates.
+ */
+UNUSED
+static void
+do255s_add_mixed(do255s_point *P3,
+	const do255s_point *P1, const do255s_point_affine *P2)
+{
+	gf t1, t5, t6, t7, t8, t9, t10, t11, X3, W3, Z3;
+	uint64_t fz1, fz2;
+
+	/*
+	 * Test whether P1 and/or P2 is neutral.
+	 */
+	fz1 = gf_iszero(&P1->X.w64);
+	fz2 = gf_iszero(&P2->X.w64);
+
+	/* t1 <- Z1^2 */
+	gf_sqr_inline(&t1, &P1->Z.w64);
+
+	/* t2 = 1 */
+	/* t3 = Z1 */
+	/* t4 = t1 */
+
+	/* t5 <- W1*W2 */
+	gf_mul_inline(&t5, &P1->W.w64, &P2->W.w64);
+
+	/* t6 <- X1*X2 */
+	gf_mul_inline(&t6, &P1->X.w64, &P2->X.w64);
+
+	/* t7 <- W1 + W2*Z1 */
+	gf_mul_inline(&t7, &P1->Z.w64, &P2->W.w64);
+	gf_add(&t7, &t7, &P1->W.w64);
+
+	/* t8 <- X1 + X2*t1 */
+	gf_mul_inline(&t8, &t1, &P2->X.w64);
+	gf_add(&t8, &t8, &P1->X.w64);
+
+	/* Z3 <- (t6 - b*t1)*t7
+	   Also, replace t1 with b*t1 */
+	gf_half(&t1, &t1);
+	gf_sub(&t11, &t6, &t1);
+	gf_mul_inline(&Z3, &t11, &t7);
+
+	/* t9 <- t7^4 */
+	gf_sqr_inline(&t9, &t7);
+	gf_sqr_inline(&t9, &t9);
+
+	/* X3 <- b*t6*t9 */
+	gf_mul_inline(&X3, &t6, &t9);
+	gf_half(&X3, &X3);
+
+	/* t10 <- (t5 + a*t3)*(t6 + b*t1)
+	   a = -1
+	   b*t1 was already computed (in t1)
+	   We overwrite t5 and t6, which we won't need anymore */
+	gf_sub(&t5, &t5, &P1->Z.w64);
+	gf_add(&t6, &t6, &t1);
+	gf_mul_inline(&t10, &t5, &t6);
+
+	/* W3 <- -t10 - 2*b*t3*t8
+	   b = 1/2, hence 2*b = 1.
+	   We overwrite t8. */
+	gf_mul_inline(&t8, &P1->Z.w64, &t8);
+	gf_sub2(&W3, &GF_ZERO, &t10, &t8);
+
+	/*
+	 * If P1 is neutral, replace P3 with P2.
+	 * If P2 is neutral, replace P3 with P1.
+	 * If both are neutral, then we want to use P1 as source, whose
+	 * Z coordinate is then zero; this allows us to assume that
+	 * P2.Z = 1 here.
+	 */
+	gf_sel3(&P3->X.w64, &P1->X.w64, &P2->X.w64, &X3, fz2, fz1);
+	gf_sel3(&P3->W.w64, &P1->W.w64, &P2->W.w64, &W3, fz2, fz1);
+	gf_sel3(&P3->Z.w64, &P1->Z.w64, &GF_ONE, &Z3, fz2, fz1);
+}
+
+static inline void
+do255s_double_inline(do255s_point *P3, const do255s_point *P1)
+{
+	/*
+	 * We use independent variable for temporaries with no reuse
+	 * when there is no mathematical dependency. This gives more
+	 * flexibility to the compiler and the CPU for moving things
+	 * around. We also try to compute W' and Z' earlier in the
+	 * sequence since they'll be needed at the start of the next
+	 * doubling. We finally aim for the lowest depth in the
+	 * dependency graph. These adjustments, by themselves, decreases
+	 * point multiplication cost by about 15% on an x86 "Coffee
+	 * Lake" core.
+	 */
+	gf t1, t2, t3, t4, t5, t6, t7, t8, t9;
+
+	/* t1 <- W*Z */
+	gf_mul_inline(&t1, &P1->W.w64, &P1->Z.w64);
+
+	/* t2 <- t1^2 */
+	gf_sqr_inline(&t2, &t1);
+
+	/* t3 <- (W + Z)^2 - 2*t1 */
+	gf_add(&t3, &P1->W.w64, &P1->Z.w64);
+	gf_mul2(&t9, &t1);
+	gf_sqr_inline(&t3, &t3);
+	gf_sub(&t3, &t3, &t9);
+
+	/* Z' <- 2*t1*(2*X - t3) */
+	gf_mul2(&t4, &P1->X.w64);
+	gf_sub(&t4, &t4, &t3);
+	gf_mul2(&t5, &t1);
+	gf_mul_inline(&P3->Z.w64, &t4, &t5);
+
+	/* W' <- 2*t2 - t3^2 */
+	gf_sqr_inline(&t6, &t3);
+	gf_mul2(&t7, &t2);
+	gf_sub(&P3->W.w64, &t7, &t6);
+
+	/* X' <- 8*t2^2 */
+	gf_sqr_inline(&t8, &t2);
+	gf_mul8(&P3->X.w64, &t8);
+}
+
+/* see do255.h */
+void
+do255s_double(do255s_point *P3, const do255s_point *P1)
+{
+	do255s_double_inline(P3, P1);
+}
+
+/* see do255.h */
+void
+do255s_double_x(do255s_point *P3, const do255s_point *P1, unsigned n)
+{
+	*P3 = *P1;
+	while (n -- > 0) {
+		do255s_double_inline(P3, P3);
+	}
+}

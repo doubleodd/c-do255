@@ -1,0 +1,44 @@
+CC = arm-linux-gcc
+CFLAGS = -Wall -Wextra -Wshadow -Wundef -Os -mcpu=cortex-m0plus
+LD = arm-linux-gcc
+LDFLAGS =
+LIBS =
+
+OBJ_TESTS = sha3_cm0.o test_do255_cm0.o
+OBJ_DO255E_CM0 = do255e_cm0.o asm_do255e_cm0.o
+OBJ_DO255S_CM0 = do255s_cm0.o asm_do255s_cm0.o
+
+OBJ_ALG_DO255E = alg_do255e_cm0.o
+OBJ_ALG_DO255S = alg_do255s_cm0.o
+
+all: test_do255_cm0
+
+clean:
+	-rm -f $(OBJ_DO255E_CM0) $(OBJ_DO255S_CM0) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS) test_do255_cm0 test_do255_cm0.gdb
+
+test_do255_cm0: $(OBJ_DO255E_CM0) $(OBJ_DO255S_CM0) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS)
+	$(LD) $(LDFLAGS) -o test_do255_cm0 $(OBJ_DO255E_CM0) $(OBJ_DO255S_CM0) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS) $(LIBS)
+
+alg_do255e_cm0.o: alg_do255e.c alg.c do255.h sha3.h
+	$(CC) $(CFLAGS) -c -o alg_do255e_cm0.o alg_do255e.c
+
+alg_do255s_cm0.o: alg_do255s.c alg.c do255.h sha3.h
+	$(CC) $(CFLAGS) -c -o alg_do255s_cm0.o alg_do255s.c
+
+do255e_cm0.o: do255e_cm0.c do255.h gf_arm.c gf_do255e_cm0.c sqrt_do255e_w32.c padd_do255e_arm.c pcore_w32.c icore_arm.c scalar_do255e_arm.c pmul_base_arm.c pmul_do255e_arm.c pvrfy_do255e_arm.c pmap_do255e_w32.c
+	$(CC) $(CFLAGS) -c -o do255e_cm0.o do255e_cm0.c
+
+do255s_cm0.o: do255s_cm0.c do255.h gf_arm.c gf_do255s_cm0.c sqrt_do255s_w32.c padd_do255s_arm.c pcore_w32.c icore_arm.c scalar_do255s_arm.c pmul_base_arm.c pmul_do255s_arm.c lagrange_do255s_arm.c pvrfy_do255s_arm.c pmap_do255s_w32.c
+	$(CC) $(CFLAGS) -c -o do255s_cm0.o do255s_cm0.c
+
+asm_do255e_cm0.o: asm_do255e_cm0.S asm_gf_cm0.S asm_padd_do255e_cm0.S asm_icore_cm0.S asm_scalar_do255e_cm0.S asm_pmul_cm0.S asm_pmul_do255e_cm0.S
+	$(CC) $(CFLAGS) -c -o asm_do255e_cm0.o asm_do255e_cm0.S
+
+asm_do255s_cm0.o: asm_do255s_cm0.S asm_gf_cm0.S asm_padd_do255s_cm0.S asm_icore_cm0.S asm_scalar_do255s_cm0.S asm_pmul_cm0.S asm_pmul_do255s_cm0.S asm_lagrange_cm0.S asm_pvrfy_do255s_cm0.S
+	$(CC) $(CFLAGS) -c -o asm_do255s_cm0.o asm_do255s_cm0.S
+
+sha3_cm0.o: sha3.c sha3.h
+	$(CC) $(CFLAGS) -c -o sha3_cm0.o sha3.c
+
+test_do255_cm0.o: test_do255.c sha3.h do255.h do255_alg.h
+	$(CC) $(CFLAGS) -c -o test_do255_cm0.o test_do255.c

@@ -1,0 +1,49 @@
+CC = cl
+CFLAGS = /nologo /W4 /wd4146 /O2 /arch:AVX2
+LD = cl
+LDFLAGS = /nologo
+LIBS =
+
+OBJ_TESTS = sha3.obj test_do255.obj
+OBJ_DO255E_W64 = do255e_w64.obj
+OBJ_DO255E_W32 = do255e_w32.obj
+OBJ_DO255S_W64 = do255s_w64.obj
+OBJ_DO255S_W32 = do255s_w32.obj
+
+OBJ_ALG_DO255E = alg_do255e.obj
+OBJ_ALG_DO255S = alg_do255s.obj
+
+all: test_do255_w64.exe test_do255_w32.exe
+
+clean:
+	-del /Q $(OBJ_DO255E_W64) $(OBJ_DO255E_W32) $(OBJ_DO255S_W64) $(OBJ_DO255S_W32) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS) test_do255_w64.exe test_do255_w32.exe
+
+test_do255_w32.exe: $(OBJ_DO255E_W32) $(OBJ_DO255S_W32) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS)
+	$(LD) $(LDFLAGS) /Fe:test_do255_w32.exe $(OBJ_DO255E_W32) $(OBJ_DO255S_W32) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS) $(LIBS)
+
+test_do255_w64.exe: $(OBJ_DO255E_W64) $(OBJ_DO255S_W64) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS)
+	$(LD) $(LDFLAGS) /Fe:test_do255_w64.exe $(OBJ_DO255E_W64) $(OBJ_DO255S_W64) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS) $(LIBS)
+
+alg_do255e.obj: alg_do255e.c alg.c do255.h sha3.h
+	$(CC) $(CFLAGS) /c /Fo:alg_do255e.obj alg_do255e.c
+
+alg_do255s.obj: alg_do255s.c alg.c do255.h sha3.h
+	$(CC) $(CFLAGS) /c /Fo:alg_do255s.obj alg_do255s.c
+
+do255e_w64.obj: do255e_w64.c do255.h support.c gf_w64.c gf_do255e_w64.c sqrt_do255e_w64.c pcore_w64.c padd_do255e_w64.c icore_w64.c scalar_do255e_w64.c pmul_base_w64.c pmul_do255e_w64.c pvrfy_do255e_w64.c pmap_do255e_w64.c
+	$(CC) $(CFLAGS) /c /Fo:do255e_w64.obj do255e_w64.c
+
+do255s_w64.obj: do255s_w64.c do255.h support.c gf_w64.c gf_do255s_w64.c sqrt_do255s_w64.c pcore_w64.c padd_do255s_w64.c icore_w64.c scalar_do255s_w64.c pmul_base_w64.c pmul_do255s_w64.c lagrange_do255s_w64.c pvrfy_do255s_w64.c pmap_do255s_w64.c
+	$(CC) $(CFLAGS) /c /Fo:do255s_w64.obj do255s_w64.c
+
+do255e_w32.obj: do255e_w32.c do255.h support.c gf_w32.c gf_do255e_w32.c sqrt_do255e_w32.c pcore_w32.c padd_do255e_w32.c icore_w32.c scalar_do255e_w32.c pmul_base_w32.c pmul_do255e_w32.c pvrfy_do255e_w32.c pmap_do255e_w32.c
+	$(CC) $(CFLAGS) /c /Fo:do255e_w32.obj do255e_w32.c
+
+do255s_w32.obj: do255s_w32.c do255.h support.c gf_w32.c gf_do255s_w32.c sqrt_do255s_w32.c pcore_w32.c padd_do255s_w32.c icore_w32.c scalar_do255s_w32.c pmul_base_w32.c pmul_do255s_w32.c lagrange_do255s_w32.c pvrfy_do255s_w32.c pmap_do255s_w32.c
+	$(CC) $(CFLAGS) /c /Fo:do255s_w32.obj do255s_w32.c
+
+sha3.obj: sha3.c sha3.h
+	$(CC) $(CFLAGS) /c /Fo:sha3.obj sha3.c
+
+test_do255.obj: test_do255.c sha3.h do255.h do255_alg.h
+	$(CC) $(CFLAGS) /c /Fo:test_do255.obj test_do255.c
