@@ -247,7 +247,7 @@ gf_mul2(gf *d, const gf *a)
 	for (i = 1; i < 8; i ++) {
 		cc = _addcarry_u32(cc, dw[i], 0, &d->v[i]);
 	}
-	d->v[0] = dw[0] - (-(uint32_t)cc & (2 * MQ));
+	d->v[0] = dw[0] + (-(uint32_t)cc & (2 * MQ));
 }
 
 /* d <- 4*a */
@@ -269,7 +269,7 @@ gf_mul4(gf *d, const gf *a)
 	for (i = 1; i < 8; i ++) {
 		cc = _addcarry_u32(cc, dw[i], 0, &d->v[i]);
 	}
-	d->v[0] = dw[0] - (-(uint32_t)cc & (2 * MQ));
+	d->v[0] = dw[0] + (-(uint32_t)cc & (2 * MQ));
 }
 
 /* d <- 8*a */
@@ -291,7 +291,7 @@ gf_mul8(gf *d, const gf *a)
 	for (i = 1; i < 8; i ++) {
 		cc = _addcarry_u32(cc, dw[i], 0, &d->v[i]);
 	}
-	d->v[0] = dw[0] - (-(uint32_t)cc & (2 * MQ));
+	d->v[0] = dw[0] + (-(uint32_t)cc & (2 * MQ));
 }
 
 /* d <- 32*a */
@@ -313,7 +313,7 @@ gf_mul32(gf *d, const gf *a)
 	for (i = 1; i < 8; i ++) {
 		cc = _addcarry_u32(cc, dw[i], 0, &d->v[i]);
 	}
-	d->v[0] = dw[0] - (-(uint32_t)cc & (2 * MQ));
+	d->v[0] = dw[0] + (-(uint32_t)cc & (2 * MQ));
 }
 
 /* d <- a*b, with b < 2^32 */

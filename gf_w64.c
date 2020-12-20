@@ -300,7 +300,7 @@ gf_mul2(gf *d, const gf *a)
 	cc = _addcarry_u64(cc, d1, 0, (unsigned long long *)&d->v1);
 	cc = _addcarry_u64(cc, d2, 0, (unsigned long long *)&d->v2);
 	cc = _addcarry_u64(cc, d3, 0, (unsigned long long *)&d->v3);
-	d->v0 = d0 - (-(unsigned long long)cc & (2 * MQ));
+	d->v0 = d0 + (-(unsigned long long)cc & (2 * MQ));
 }
 
 /* d <- 4*a */
@@ -321,7 +321,7 @@ gf_mul4(gf *d, const gf *a)
 	cc = _addcarry_u64(cc, d1, 0, (unsigned long long *)&d->v1);
 	cc = _addcarry_u64(cc, d2, 0, (unsigned long long *)&d->v2);
 	cc = _addcarry_u64(cc, d3, 0, (unsigned long long *)&d->v3);
-	d->v0 = d0 - (-(unsigned long long)cc & (2 * MQ));
+	d->v0 = d0 + (-(unsigned long long)cc & (2 * MQ));
 }
 
 /* d <- 8*a */
@@ -342,7 +342,7 @@ gf_mul8(gf *d, const gf *a)
 	cc = _addcarry_u64(cc, d1, 0, (unsigned long long *)&d->v1);
 	cc = _addcarry_u64(cc, d2, 0, (unsigned long long *)&d->v2);
 	cc = _addcarry_u64(cc, d3, 0, (unsigned long long *)&d->v3);
-	d->v0 = d0 - (-(unsigned long long)cc & (2 * MQ));
+	d->v0 = d0 + (-(unsigned long long)cc & (2 * MQ));
 }
 
 /* d <- 32*a */
@@ -363,7 +363,7 @@ gf_mul32(gf *d, const gf *a)
 	cc = _addcarry_u64(cc, d1, 0, (unsigned long long *)&d->v1);
 	cc = _addcarry_u64(cc, d2, 0, (unsigned long long *)&d->v2);
 	cc = _addcarry_u64(cc, d3, 0, (unsigned long long *)&d->v3);
-	d->v0 = d0 - (-(unsigned long long)cc & (2 * MQ));
+	d->v0 = d0 + (-(unsigned long long)cc & (2 * MQ));
 }
 
 /* d <- a*b, with b < 2^32 */
