@@ -34,6 +34,9 @@ are provided:
   - `cm0`: an implementation for ARM Cortex M0+ CPUs, written mostly
     in assembly.
 
+  - `cm4`: an implementation for ARM Cortex M4 CPUs, written mostly
+    in assembly.
+
 ## Code Roadmap
 
 This repository contains many source files with an intrincate and
@@ -88,15 +91,16 @@ of operations in the base field). Compilation of either implementation
 is a single invocation of the C compiler on the main file, and it
 produces a single object file.
 
-For the ARM Cortex M0+ implementations, a similar mechanism is used, with
-some differences:
+For the ARM Cortex M0+ and M4 implementations, a similar mechanism is
+used, with some differences:
 
   - Most of the included C files use the `arm` name.
   - Many functions are not implemented in C but in assembly.
   - The assembly code is provided in a collection of `.S` files. These
     files follow a similar pattern of inclusion, so that they are
     compiled with a single invocation of the C compiler, on the main
-    assembly file, which is `do255e_cm0.S` or `do255s_cm0.S`.
+    assembly file, which is `do255e_cm0.S` or `do255s_cm0.S`
+    (`do255e_cm4.S` or `do255s_cm4.S` for the M4 code).
 
 Take care that the assembly file names use an uppercase `.S`, which
 instructs the compiler to use the C preprocessor on them; this is how
@@ -154,17 +158,20 @@ invoke a cross-compiler under the name `arm-linux-gcc`. To obtain an
 appropriate cross-compiler, consider using
 [Buildroot](https://buildroot.org/); this will allow the production of a
 test binary `test_do255_cm0` that can then be executed with `qemu-arm`
-(from [QEMU](https://www.qemu.org/)).
+(from [QEMU](https://www.qemu.org/)). Similarly, `make -f Makefile.cm4`
+will compile the ARM Cortex M4 code, and produce `test_do255_cm4`.
 
 QEMU is very convenient for development and tests, with two caveats:
 
   - Under QEMU emulation, unaligned memory accesses work fine, but they
-    trigger faults on the real hardware.
+    may trigger faults on the real hardware.
 
   - QEMU cannot provide speed benchmarks. These must be done on an
-    actual Cortex M0+ CPU.
+    actual Cortex M0+ or M4 CPU.
 
 The ARM Cortex M0+ code has also been compiled with `arm-none-eabi-gcc`
 (from the `gcc-arm-none-eabi` package on Ubuntu 20.04) with a custom
 firmware skeleton, then executed on a SAM D20 Xplained Pro test board,
-on which cycle-accurate benchmarks were performed.
+on which cycle-accurate benchmarks were performed. The M4 code could
+also be compiled with `arm-none-eabi-gcc`, and was successfully tested
+and benchmarks on an STM32F4DISCOVERY test board.
