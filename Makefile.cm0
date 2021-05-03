@@ -19,16 +19,16 @@ clean:
 test_do255_cm0: $(OBJ_DO255E_CM0) $(OBJ_DO255S_CM0) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS)
 	$(LD) $(LDFLAGS) -o test_do255_cm0 $(OBJ_DO255E_CM0) $(OBJ_DO255S_CM0) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS) $(LIBS)
 
-alg_do255e_cm0.o: alg_do255e.c alg.c do255.h sha3.h
+alg_do255e_cm0.o: alg_do255e.c alg.c do255.h do255_alg.h sha3.h
 	$(CC) $(CFLAGS) -c -o alg_do255e_cm0.o alg_do255e.c
 
-alg_do255s_cm0.o: alg_do255s.c alg.c do255.h sha3.h
+alg_do255s_cm0.o: alg_do255s.c alg.c do255.h do255_alg.h sha3.h
 	$(CC) $(CFLAGS) -c -o alg_do255s_cm0.o alg_do255s.c
 
-do255e_cm0.o: do255e_cm0.c do255.h gf_arm.c gf_do255e_cm0.c sqrt_do255e_w32.c padd_do255e_arm.c pcore_w32.c icore_arm.c scalar_do255e_arm.c pmul_base_arm.c pmul_do255e_arm.c pvrfy_do255e_arm.c pmap_do255e_w32.c
+do255e_cm0.o: do255e_cm0.c do255.h support.c gf_arm.c gf_do255e_cm0.c sqrt_do255e_w32.c padd_do255e_arm.c pcore_w32.c icore_arm.c scalar_do255e_arm.c pmul_base_arm.c pmul_do255e_arm.c pvrfy_do255e_arm.c pmap_do255e_w32.c
 	$(CC) $(CFLAGS) -c -o do255e_cm0.o do255e_cm0.c
 
-do255s_cm0.o: do255s_cm0.c do255.h gf_arm.c gf_do255s_cm0.c sqrt_do255s_w32.c padd_do255s_arm.c pcore_w32.c icore_arm.c scalar_do255s_arm.c pmul_base_arm.c pmul_do255s_arm.c lagrange_do255s_arm.c pvrfy_do255s_arm.c pmap_do255s_w32.c
+do255s_cm0.o: do255s_cm0.c do255.h support.c gf_arm.c gf_do255s_cm0.c sqrt_do255s_w32.c padd_do255s_arm.c pcore_w32.c icore_arm.c scalar_do255s_arm.c pmul_base_arm.c pmul_do255s_arm.c lagrange_do255s_arm.c pvrfy_do255s_arm.c pmap_do255s_w32.c
 	$(CC) $(CFLAGS) -c -o do255s_cm0.o do255s_cm0.c
 
 asm_do255e_cm0.o: asm_do255e_cm0.S asm_gf_cm0.S asm_padd_do255e_cm0.S asm_icore_cm0.S asm_scalar_do255e_cm0.S asm_pmul_cm0.S asm_pmul_do255e_cm0.S

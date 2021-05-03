@@ -86,7 +86,7 @@ gf_sel2(gf *d, const gf *a, const gf *b, uint32_t ctl)
  *  - otherwise, if fb = 1, then set d to b
  *  - otherwise, set d to c
  * Flags fa and fb MUST have value 0 or 1. If both are 1, fa takes
- * precedence (c is set to a).
+ * precedence (d is set to a).
  */
 void CN(gf_sel3)(gf *d, const gf *a, const gf *b, const gf *c,
 	uint32_t fa, uint32_t fb);
@@ -103,6 +103,10 @@ void CN(gf_mul4)(gf *d, const gf *a);
 /* d <- 8*a */
 void CN(gf_mul8)(gf *d, const gf *a);
 #define gf_mul8   CN(gf_mul8)
+
+/* d <- 32*a */
+void CN(gf_mul32)(gf *d, const gf *a);
+#define gf_mul32   CN(gf_mul32)
 
 /* d <- a*b, with b < 2^16 */
 void CN(gf_mul_small)(gf *d, const gf *a, uint32_t b);

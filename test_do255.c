@@ -367,6 +367,10 @@ test_do255s_scalar(void)
 		static const uint8_t zero[32] = { 0 };
 
 		shake_extract(&rng, bb, sizeof bb);
+		if (i == 100) {
+			memset(bb, 0, 31);
+			bb[31] = 0x40;
+		}
 		for (j = 0; j <= (int)sizeof bb; j ++) {
 			do255s_scalar_reduce(a, bb, j);
 			scal_reduce(b, bb, j, DO255S_R);
@@ -1612,6 +1616,7 @@ test_do255s_add(void)
 		uint8_t e1[32], e2[32], e3[32], e4[32], e5[32], e6[32];
 		uint8_t tmp[32];
 		do255s_point P1, P2, P3, P4, P5, P6, T, U;
+		int j, n;
 
 		HEXTOBIN(e1, *s ++);
 		HEXTOBIN(e2, *s ++);
@@ -1675,6 +1680,19 @@ test_do255s_add(void)
 		do255s_encode(tmp, &U);
 		check_equals(tmp, e6, 32, "KAT add 10");
 
+		/* Check multiple doublings. */
+		for (n = 0; n < 8; n ++) {
+			do255s_double_x(&T, &P1, n);
+			do255s_encode(e1, &T);
+			U = P1;
+			for (j = 0; j < n; j ++) {
+				do255s_double(&U, &U);
+			}
+			do255s_encode(e2, &U);
+			sprintf((char *)tmp, "double_x %d", n);
+			check_equals(e1, e2, 32, (char *)tmp);
+		}
+
 		printf(".");
 		fflush(stdout);
 	}
@@ -1696,6 +1714,7 @@ test_do255e_add(void)
 		uint8_t e1[32], e2[32], e3[32], e4[32], e5[32], e6[32];
 		uint8_t tmp[32];
 		do255e_point P1, P2, P3, P4, P5, P6, T, U;
+		int j, n;
 
 		HEXTOBIN(e1, *s ++);
 		HEXTOBIN(e2, *s ++);
@@ -1758,6 +1777,19 @@ test_do255e_add(void)
 		do255e_add(&U, &T, &U);
 		do255e_encode(tmp, &U);
 		check_equals(tmp, e6, 32, "KAT add 10");
+
+		/* Check multiple doublings. */
+		for (n = 0; n < 8; n ++) {
+			do255e_double_x(&T, &P1, n);
+			do255e_encode(e1, &T);
+			U = P1;
+			for (j = 0; j < n; j ++) {
+				do255e_double(&U, &U);
+			}
+			do255e_encode(e2, &U);
+			sprintf((char *)tmp, "double_x %d", n);
+			check_equals(e1, e2, 32, (char *)tmp);
+		}
 
 		printf(".");
 		fflush(stdout);
@@ -3739,19 +3771,19 @@ main(void)
 	test_do255s_scalar();
 	test_do255e_decode();
 	test_do255s_decode();
-	test_do255e_map_to_curve();
-	test_do255s_map_to_curve();
 	test_do255e_add();
 	test_do255s_add();
 	test_do255e_mul();
 	test_do255s_mul();
+	test_do255e_map_to_curve();
+	test_do255s_map_to_curve();
 	test_do255e_verify_helper();
 	test_do255s_verify_helper();
 	test_do255e_keygen();
-	test_do255e_ecdh();
-	test_do255e_sign();
 	test_do255s_keygen();
+	test_do255e_ecdh();
 	test_do255s_ecdh();
+	test_do255e_sign();
 	test_do255s_sign();
 #if DO_BENCH86
 	speed_do255e_decode();
@@ -3776,3 +3808,62 @@ main(void)
 #endif
 	return 0;
 }
+
+/*
+void
+print_DEBUG(const uint32_t *sp, unsigned skip, unsigned num, unsigned tt)
+{
+	unsigned u;
+	static long count = 0;
+
+	printf("----- %ld\n", count ++);
+	printf("r0  = %10u (%08X)   r8  = %10u (%08X)\n",
+		sp[ 8], sp[ 8], sp[ 0], sp[ 0]);
+	printf("r1  = %10u (%08X)   r9  = %10u (%08X)\n",
+		sp[ 9], sp[ 9], sp[ 1], sp[ 1]);
+	printf("r2  = %10u (%08X)   r10 = %10u (%08X)\n",
+		sp[10], sp[10], sp[ 2], sp[ 2]);
+	printf("r3  = %10u (%08X)   r11 = %10u (%08X)\n",
+		sp[11], sp[11], sp[ 3], sp[ 3]);
+	printf("r4  = %10u (%08X)   r12 = %10u (%08X)\n",
+		sp[12], sp[12], sp[ 4], sp[ 4]);
+	printf("r5  = %10u (%08X)   r13 = -\n",
+		sp[13], sp[13]);
+	printf("r6  = %10u (%08X)   r14 = %10u (%08X)\n",
+		sp[14], sp[14], sp[ 6], sp[ 6]);
+	printf("r7  = %10u (%08X)   r15 = -\n",
+		sp[15], sp[15]);
+	printf("APSR = %c%c%c%c%c %c%c%c%c\n",
+		((sp[5] >> 31) & 1) ? 'N' : '.',
+		((sp[5] >> 30) & 1) ? 'Z' : '.',
+		((sp[5] >> 29) & 1) ? 'C' : '.',
+		((sp[5] >> 28) & 1) ? 'V' : '.',
+		((sp[5] >> 27) & 1) ? 'Q' : '.',
+		((sp[5] >> 19) & 1) ? '3' : '.',
+		((sp[5] >> 18) & 1) ? '2' : '.',
+		((sp[5] >> 17) & 1) ? '1' : '.',
+		((sp[5] >> 16) & 1) ? '0' : '.');
+	sp += 16 + skip;
+	if (tt == 1) {
+		for (u = 0; u < num; u ++) {
+			if (u == 0) {
+				printf(" ");
+			} else if (u % 8 == 0) {
+				printf("\n ");
+			}
+			printf(" %08X", sp[u]);
+		}
+		printf("\n");
+	} else {
+		for (u = 0; u < num; u ++) {
+			int j;
+
+			printf("0x");
+			for (j = (int)tt - 1; j >= 0; j --) {
+				printf("%08X", sp[u * tt + j]);
+			}
+			printf("\n");
+		}
+	}
+}
+*/

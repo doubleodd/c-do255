@@ -1,0 +1,47 @@
+CC = arm-linux-gcc
+CFLAGS = -Wall -Wextra -Wshadow -Wundef -Os -mcpu=cortex-m4
+LD = arm-linux-gcc
+LDFLAGS =
+LIBS =
+
+OBJ_TESTS = sha3_x_cm4.o asm_sha3_cm4.o test_do255_cm4.o
+OBJ_DO255E_CM4 = do255e_cm4.o asm_do255e_cm4.o
+OBJ_DO255S_CM4 = do255s_cm4.o asm_do255s_cm4.o
+
+OBJ_ALG_DO255E = alg_do255e_cm4.o
+OBJ_ALG_DO255S = alg_do255s_cm4.o
+
+all: test_do255_cm4
+
+clean:
+	-rm -f $(OBJ_DO255E_CM4) $(OBJ_DO255S_CM4) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS) test_do255_cm4 test_do255_cm4.gdb
+
+test_do255_cm4: $(OBJ_DO255E_CM4) $(OBJ_DO255S_CM4) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS)
+	$(LD) $(LDFLAGS) -o test_do255_cm4 $(OBJ_DO255E_CM4) $(OBJ_DO255S_CM4) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS) $(LIBS)
+
+alg_do255e_cm4.o: alg_do255e.c alg.c do255.h do255_alg.h sha3.h
+	$(CC) $(CFLAGS) -c -o alg_do255e_cm4.o alg_do255e.c
+
+alg_do255s_cm4.o: alg_do255s.c alg.c do255.h do255_alg.h sha3.h
+	$(CC) $(CFLAGS) -c -o alg_do255s_cm4.o alg_do255s.c
+
+do255e_cm4.o: do255e_cm4.c do255.h support.c gf_arm.c gf_do255e_cm4.c sqrt_do255e_w32.c padd_do255e_arm.c pcore_w32.c icore_arm.c scalar_do255e_arm.c pmul_base_arm.c pmul_do255e_arm.c pvrfy_do255e_arm.c pmap_do255e_w32.c
+	$(CC) $(CFLAGS) -c -o do255e_cm4.o do255e_cm4.c
+
+do255s_cm4.o: do255s_cm4.c do255.h support.c gf_arm.c gf_do255s_cm4.c sqrt_do255s_w32.c padd_do255s_arm.c pcore_w32.c icore_arm.c scalar_do255s_arm.c pmul_base_arm.c pmul_do255s_arm.c lagrange_do255s_arm.c pvrfy_do255s_arm.c pmap_do255s_w32.c
+	$(CC) $(CFLAGS) -c -o do255s_cm4.o do255s_cm4.c
+
+asm_do255e_cm4.o: asm_do255e_cm4.S asm_gf_cm4.S asm_padd_do255e_cm4.S asm_icore_cm4.S asm_scalar_do255e_cm4.S asm_pmul_cm4.S asm_pmul_do255e_cm4.S
+	$(CC) $(CFLAGS) -c -o asm_do255e_cm4.o asm_do255e_cm4.S
+
+asm_do255s_cm4.o: asm_do255s_cm4.S asm_gf_cm4.S asm_padd_do255s_cm4.S asm_icore_cm4.S asm_scalar_do255s_cm4.S asm_pmul_cm4.S asm_pmul_do255s_cm4.S asm_lagrange_cm4.S asm_pvrfy_do255s_cm4.S
+	$(CC) $(CFLAGS) -c -o asm_do255s_cm4.o asm_do255s_cm4.S
+
+sha3_x_cm4.o: sha3_x.c sha3.h
+	$(CC) $(CFLAGS) -c -o sha3_x_cm4.o sha3_x.c
+
+asm_sha3_cm4.o: asm_sha3_cm4.S
+	$(CC) $(CFLAGS) -c -o asm_sha3_cm4.o asm_sha3_cm4.S
+
+test_do255_cm4.o: test_do255.c sha3.h do255.h do255_alg.h
+	$(CC) $(CFLAGS) -c -o test_do255_cm4.o test_do255.c

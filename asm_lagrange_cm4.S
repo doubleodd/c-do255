@@ -19,55 +19,32 @@
 	.thumb_func
 	.type	bitlength_inner, %function
 bitlength_inner:
-	@ Make r1 the offset of the last word (in bytes).
-	subs	r1, #1
-	lsls	r1, #2
-
-	@ Get sign mask.
-	ldr	r3, [r0, r1]
-	asrs	r3, r3, #31
-
 	@ Find the top word not equal to the sign mask.
-.Lbitlength__1:
-	ldr	r2, [r0, r1]
-	eors	r2, r3
-	bne	.Lbitlength__2
-	subs	r1, #4
-	bpl	.Lbitlength__1
+	add	r0, r0, r1, lsl #2
+	ldr	r3, [r0, #-4]!
+	eors	r2, r3, r3, asr #31
+	bne	.Lbitlength_cont
+	subs	r1, #1
+	beq	.Lbitlength_exit_zero
+.Lbitlength_loop:
+	ldr	r2, [r0, #-4]!
+	eors	r2, r2, r3, asr #31
+	bne	.Lbitlength_cont
+	subs	r1, #1
+	bne	.Lbitlength_loop
 
-	@ All limbs are equal to the sign mask; bit length is zero.
-	movs	r0, #0
+.Lbitlength_exit_zero:
+	@ If we reach that point, then all words are equal to the sign
+	@ mask, and the bitlength is zero.
+	eors	r0, r0
 	bx	lr
 
-.Lbitlength__2:
-	@ Word r2 (sign-adjusted) was found at offset r1 (in bytes).
-	lsls	r0, r1, #3
-	adds	r0, #1
-
-	lsrs	r1, r2, #16
-	beq	.Lbitlength__3
-	movs	r2, r1
-	adds	r0, #16
-.Lbitlength__3:
-	lsrs	r1, r2, #8
-	beq	.Lbitlength__4
-	movs	r2, r1
-	adds	r0, #8
-.Lbitlength__4:
-	lsrs	r1, r2, #4
-	beq	.Lbitlength__5
-	movs	r2, r1
-	adds	r0, #4
-.Lbitlength__5:
-	lsrs	r1, r2, #2
-	beq	.Lbitlength__6
-	movs	r2, r1
-	adds	r0, #2
-.Lbitlength__6:
-	lsrs	r1, r2, #1
-	beq	.Lbitlength__7
-	adds	r0, #1
-.Lbitlength__7:
+.Lbitlength_cont:
+	@ r1 contains one more than the index of the top word, which is
+	@ in r2 (already sign-adjusted).
+	clz	r2, r2
+	lsls	r0, r1, #5
+	subs	r0, r2
 	bx	lr
 	.size	bitlength_inner, .-bitlength_inner
 
@@ -82,96 +59,58 @@ bitlength_inner:
 	.thumb_func
 	.type	add_lshift_inner, %function
 add_lshift_inner:
-	push	{ r4, r5, r6, r7, lr }
+	push	{ r4, r5, r6, r7, r8 }
 
 	@ Set actual copy values:
 	@   r0   a (adjusted)
 	@   r1   b (adjusted)
 	@   r2   length of b, in words (adjusted)
-	@   r3   shift count (0..31)
+	@   r4   shift count (0..31)
 	lsrs	r4, r3, #5
 	subs	r2, r4
-	bls	.Ladd_lshift__exit
-	lsls	r4, r4, #2
-	adds	r0, r4
-	lsls	r3, r3, #27
-	lsrs	r3, r3, #27
+	bls	.Ladd_lshift_exit
+	add	r0, r0, r4, lsl #2
+	and	r4, r3, #0x1F
 
-	@ If there is no shift, use a specialized loop.
-	cmp	r3, #0
-	beq	.Ladd_lshift_noshift
+	@ If there is only one remaining word, process it now.
+	subs	r2, #1
+	beq	.Ladd_lshift_oneword
 
-	eors	r4, r4        @ Storage for carry (0 or 1)
-	eors	r5, r5        @ Partial block for shift
-	movs	r6, #32
-	subs	r6, r3        @ Shift count complement
-	subs	r2, #2
-	bcc	.Ladd_lshift_cont
-	mov	r14, r2       @ Loop counter
+	@ Multiplier (for a left-shift by r4 bits).
+	movs	r3, #1
+	lsls	r3, r4
+
+	@ We process two words at each iteration.
+	@ Carry word for shift+addition is in r8.
+	eor	r8, r8
 .Ladd_lshift_loop1:
-	ldm	r1!, { r7 }
-	movs	r2, r7
-	lsrs	r2, r6
-	lsls	r7, r3
-	orrs	r7, r5
-	ldr	r5, [r0]
-	lsrs	r4, r4, #1
-	adcs	r5, r7
-	adcs	r4, r4
-	stm	r0!, { r5 }
-	ldm	r1!, { r7 }
-	movs	r5, r7
-	lsrs	r5, r6
-	lsls	r7, r3
-	orrs	r7, r2
-	ldr	r2, [r0]
-	lsrs	r4, r4, #1
-	adcs	r2, r7
-	adcs	r4, r4
-	stm	r0!, { r2 }
-	mov	r2, r14
-	subs	r2, #2
-	mov	r14, r2
-	bcs	.Ladd_lshift_loop1
-.Ladd_lshift_cont:
-	mov	r2, r14
-	adds	r2, #1
-	bcc	.Ladd_lshift__exit
-	ldm	r1!, { r7 }
-	lsls	r7, r3
-	orrs	r7, r5
-	ldr	r5, [r0]
-	lsrs	r4, r4, #1
-	adcs	r5, r7
-	stm	r0!, { r5 }
-	b	.Ladd_lshift__exit
-
-.Ladd_lshift_noshift:
-	eors	r3, r3        @ Storage for carry (0 or 1)
-	subs	r2, #2
-	bcc	.Ladd_lshift_noshift_cont
-.Ladd_lshift_noshift_loop2:
-	ldm	r0!, { r4, r5 }
+	ldrd	r4, r5, [r0]
 	ldm	r1!, { r6, r7 }
-	lsrs	r3, r3, #1    @ Retrieve carry
-	adcs	r4, r6
-	adcs	r5, r7
-	adcs	r3, r3        @ Store carry
-	subs	r0, #8
+	umaal	r4, r8, r3, r6
+	umaal	r5, r8, r3, r7
 	stm	r0!, { r4, r5 }
 	subs	r2, #2
-	bcs	.Ladd_lshift_noshift_loop2
-.Ladd_lshift_noshift_cont:
-	adds	r2, #1
-	bcc	.Ladd_lshift__exit
+	bhi	.Ladd_lshift_loop1
+	@ Process the final word (if any).
+	bcc	.Ladd_lshift_exit
 	ldr	r4, [r0]
 	ldm	r1!, { r6 }
-	lsrs	r3, r3, #1    @ Retrieve carry
-	adcs	r4, r6
+	umaal	r4, r8, r3, r6
 	stm	r0!, { r4 }
 
-.Ladd_lshift__exit:
-	pop	{ r4, r5, r6, r7, pc }
+.Ladd_lshift_exit:
+	pop	{ r4, r5, r6, r7, r8 }
+	bx	lr
+
+.Ladd_lshift_oneword:
+	@ Only one word to process; shift count in r4.
+	ldr	r5, [r0]
+	ldr	r6, [r1]
+	lsls	r6, r4
+	adds	r5, r6
+	str	r5, [r0]
+	pop	{ r4, r5, r6, r7, r8 }
+	bx	lr
 	.size	add_lshift_inner, .-add_lshift_inner
 
 @ =======================================================================
@@ -185,96 +124,63 @@ add_lshift_inner:
 	.thumb_func
 	.type	sub_lshift_inner, %function
 sub_lshift_inner:
-	push	{ r4, r5, r6, r7, lr }
+	push	{ r4, r5, r6, r7, r8 }
 
 	@ Set actual copy values:
 	@   r0   a (adjusted)
 	@   r1   b (adjusted)
 	@   r2   length of b, in words (adjusted)
-	@   r3   shift count (0..31)
+	@   r4   shift count (0..31)
 	lsrs	r4, r3, #5
 	subs	r2, r4
-	bls	.Lsub_lshift__exit
-	lsls	r4, r4, #2
-	adds	r0, r4
-	lsls	r3, r3, #27
-	lsrs	r3, r3, #27
+	bls	.Lsub_lshift_exit
+	add	r0, r0, r4, lsl #2
+	and	r4, r3, #0x1F
 
-	@ If there is no shift, use a specialized loop.
-	cmp	r3, #0
-	beq	.Lsub_lshift_noshift
+	@ Multiplier (for a left-shift by r4 bits).
+	@ We use umaal for the shift, so we need to subtract 1 from the
+	@ multiplier.
+	movs	r3, #1
+	lsls	r3, r4
+	subs	r3, #1
 
-	movs	r4, #1        @ Storage for carry (0 or 1)
-	eors	r5, r5        @ Partial block for shift
-	movs	r6, #32
-	subs	r6, r3        @ Shift count complement
-	subs	r2, #2
-	bcc	.Lsub_lshift_cont
-	mov	r14, r2       @ Loop counter
-.Lsub_lshift_loop1:
-	ldm	r1!, { r7 }
-	movs	r2, r7
-	lsrs	r2, r6
-	lsls	r7, r3
-	orrs	r7, r5
-	ldr	r5, [r0]
-	lsrs	r4, r4, #1
-	sbcs	r5, r7
-	adcs	r4, r4
-	stm	r0!, { r5 }
-	ldm	r1!, { r7 }
-	movs	r5, r7
-	lsrs	r5, r6
-	lsls	r7, r3
-	orrs	r7, r2
-	ldr	r2, [r0]
-	lsrs	r4, r4, #1
-	sbcs	r2, r7
-	adcs	r4, r4
-	stm	r0!, { r2 }
-	mov	r2, r14
-	subs	r2, #2
-	mov	r14, r2
-	bcs	.Lsub_lshift_loop1
-.Lsub_lshift_cont:
-	mov	r2, r14
-	adds	r2, #1
-	bcc	.Lsub_lshift__exit
-	ldm	r1!, { r7 }
-	lsls	r7, r3
-	orrs	r7, r5
-	ldr	r5, [r0]
-	lsrs	r4, r4, #1
-	sbcs	r5, r7
-	stm	r0!, { r5 }
-	b	.Lsub_lshift__exit
+	@ Carry word for shift is in r8.
+	eor	r8, r8
 
-.Lsub_lshift_noshift:
-	movs	r3, #1        @ Storage for carry (0 or 1)
-	subs	r2, #2
-	bcc	.Lsub_lshift_noshift_cont
-.Lsub_lshift_noshift_loop2:
-	ldm	r0!, { r4, r5 }
-	ldm	r1!, { r6, r7 }
-	lsrs	r3, r3, #1    @ Retrieve carry
-	sbcs	r4, r6
-	sbcs	r5, r7
-	adcs	r3, r3        @ Store carry
-	subs	r0, #8
-	stm	r0!, { r4, r5 }
-	subs	r2, #2
-	bcs	.Lsub_lshift_noshift_loop2
-.Lsub_lshift_noshift_cont:
-	adds	r2, #1
-	bcc	.Lsub_lshift__exit
+	@ If there is an odd number of words, process one now.
+	@ Since r2 < 2^31, the subs opcode will make a borrow if and
+	@ only if r2 is odd.
+	subs	r4, r2, r2, lsl #31
+	lsr	r2, #1
+	bcs	.Lsub_lshift_cont
 	ldr	r4, [r0]
 	ldm	r1!, { r6 }
-	lsrs	r3, r3, #1    @ Retrieve carry
-	sbcs	r4, r6
+	umaal	r6, r8, r3, r6
+	subs	r4, r6
 	stm	r0!, { r4 }
 
-.Lsub_lshift__exit:
-	pop	{ r4, r5, r6, r7, pc }
+.Lsub_lshift_cont:
+	@ r2 contains the number of iterations (with two words being
+	@ processed at each iteration).
+	@ Current borrow has been set (if jumping here directly, the
+	@ subs opcode set the carry, i.e. cleared the borrow).
+
+	@ We process two words at each iteration.
+.Lsub_lshift_loop:
+	cbz	r2, .Lsub_lshift_exit
+	ldrd	r4, r5, [r0]
+	ldm	r1!, { r6, r7 }
+	umaal	r6, r8, r3, r6
+	umaal	r7, r8, r3, r7
+	sbcs	r4, r6
+	sbcs	r5, r7
+	stm	r0!, { r4, r5 }
+	sub	r2, #1
+	b	.Lsub_lshift_loop
+
+.Lsub_lshift_exit:
+	pop	{ r4, r5, r6, r7, r8 }
+	bx	lr
 	.size	sub_lshift_inner, .-sub_lshift_inner
 
 @ =======================================================================
@@ -289,11 +195,7 @@ sub_lshift_inner:
 	.thumb_func
 	.type	CN(reduce_basis_vartime), %function
 CN(reduce_basis_vartime):
-	push	{ r4, r5, r6, r7, lr }
-	mov	r4, r8
-	mov	r5, r10
-	mov	r6, r11
-	push	{ r4, r5, r6 }
+	push	{ r4, r5, r6, r7, r8, r10, r11, lr }
 
 	@ Data layout on stack, depending on the value of r5:
 	@    r5 = 0 or 1:
@@ -334,21 +236,16 @@ CN(reduce_basis_vartime):
 
 	@ pp <- r*k
 	add	r0, sp, #208
-	movs	r1, #16
-	mov	r2, sp
-	movs	r3, #8
-	adr	r4, const_reduce_basis_r
-	movs	r5, #8
-	bl	iXX_mul_inner
+	mov	r1, sp
+	adr	r2, const_reduce_basis_r
+	bl	CN(mul256x256)
 
 	@ nv <- k^2 + 1
 	add	r0, sp, #144
-	movs	r1, #16
+	mov	r1, sp
 	mov	r2, sp
-	movs	r3, #8
-	mov	r4, sp
-	movs	r5, #8
-	bl	iXX_mul_inner
+	bl	CN(mul256x256)
+
 	add	r0, sp, #144
 	add	r1, sp, #144
 	eors	r7, r7
@@ -433,9 +330,8 @@ const_reduce_basis_r2:
 	@ Compare nu and nv; if nu < nv, then swap.
 	add	r0, sp, #80
 	add	r1, sp, #144
-	lsls	r2, r5, #6
-	adds	r0, r2
-	subs	r1, r2
+	add	r0, r0, r5, lsl #6
+	sub	r1, r1, r5, lsl #6
 	lsls	r2, r6, #2
 .Lreduce_basis_loop3:
 	subs	r2, #4
@@ -446,8 +342,7 @@ const_reduce_basis_r2:
 	beq	.Lreduce_basis_loop3
 	cmp	r4, r3
 	bls	.Lreduce_basis_cont3
-	movs	r0, #1
-	eors	r5, r0
+	eor	r5, r5, #1
 
 .Lreduce_basis_cont3:
 	@ nu >= nv
@@ -457,23 +352,20 @@ const_reduce_basis_r2:
 	@ has its top bit set.
 	@ Since nu is always non-zero, we do not need a loop guard here.
 	add	r0, sp, #80
-	lsls	r2, r5, #6
-	adds	r0, r2
-	lsls	r2, r6, #2
+	add	r4, r0, r5, lsl #6
+	add	r0, r4, r6, lsl #2
 .Lreduce_basis_loop4:
-	subs	r2, #4
-	ldr	r3, [r0, r2]
+	ldr	r3, [r0, #-4]!
 	cmp	r3, #0
 	beq	.Lreduce_basis_loop4
-	lsrs	r6, r2, #2
+	subs	r6, r0, r4
+	lsrs	r6, #2
 	adds	r6, #1
-	lsrs	r3, r3, #31
-	adds	r6, r3
+	add	r6, r6, r3, lsr #31
 
 	@ Get bit length of nv; if 255 or lower, then we exit.
 	add	r0, sp, #144
-	lsls	r2, r5, #6
-	subs	r0, r2
+	sub	r0, r0, r5, lsl #6
 	movs	r1, r6
 	bl	bitlength_inner
 	cmp	r0, #255
@@ -481,24 +373,18 @@ const_reduce_basis_r2:
 	@ We copy the low 17 bytes of v0 and v1 into the output buffers.
 	ldr	r0, [sp, #272]
 	add	r1, sp, #40
-	movs	r3, #40
-	muls	r3, r5
-	subs	r1, r3
+	sub	r1, r1, r5, lsl #5
+	sub	r1, r1, r5, lsl #3
 	movs	r2, #17
 	bl	memcpy
 	ldr	r0, [sp, #276]
 	add	r1, sp, #60
-	movs	r3, #40
-	muls	r3, r5
-	subs	r1, r3
+	sub	r1, r1, r5, lsl #5
+	sub	r1, r1, r5, lsl #3
 	movs	r2, #17
 	bl	memcpy
 	add	sp, #280
-	pop	{ r4, r5, r6 }
-	mov	r8, r4
-	mov	r10, r5
-	mov	r11, r6
-	pop	{ r4, r5, r6, r7, pc }
+	pop	{ r4, r5, r6, r7, r8, r10, r11, pc }
 
 .Lreduce_basis_cont4:
 	@ Get bit length of pp and compute shift count s (into r4).
@@ -519,49 +405,41 @@ const_reduce_basis_r2:
 	@    nu <- nu + lshift(nv, 2*s) + lshift(pp, s+1)
 	@    pp <- pp + lshift(nv, s)
 	add	r0, sp, #204   @ address of pp, minus 4.
-	lsls	r1, r6, #2
-	ldr	r0, [r0, r1]
+	ldr	r0, [r0, r6, lsl #2]
 	asrs	r0, r0, #31
 	bne	.Lreduce_basis_cont5
 
 	@ sp >= 0
-	mov	r0, sp
+	add	r7, r5, r5, lsl #2
+	add	r0, sp, r7, lsl #3
 	add	r1, sp, #40
-	movs	r3, #40
-	muls	r3, r5
-	adds	r0, r3
-	subs	r1, r3
+	sub	r1, r1, r7, lsl #3
 	movs	r2, #5
 	movs	r3, r4
 	bl	sub_lshift_inner
 	add	r0, sp, #20
+	add	r0, r0, r7, lsl #3
 	add	r1, sp, #60
-	movs	r3, #40
-	muls	r3, r5
-	adds	r0, r3
-	subs	r1, r3
+	sub	r1, r1, r7, lsl #3
 	movs	r2, #5
 	movs	r3, r4
 	bl	sub_lshift_inner
 	add	r0, sp, #80
+	add	r0, r0, r5, lsl #6
 	add	r1, sp, #144
-	lsls	r3, r5, #6
-	adds	r0, r3
-	subs	r1, r3
+	sub	r1, r1, r5, lsl #6
 	movs	r2, r6
 	lsls	r3, r4, #1
 	bl	add_lshift_inner
 	add	r0, sp, #80
+	add	r0, r0, r5, lsl #6
 	add	r1, sp, #208
-	lsls	r3, r5, #6
-	adds	r0, r3
 	movs	r2, r6
 	adds	r3, r4, #1
 	bl	sub_lshift_inner
 	add	r0, sp, #208
 	add	r1, sp, #144
-	lsls	r3, r5, #6
-	subs	r1, r3
+	sub	r1, r1, r5, lsl #6
 	movs	r2, r6
 	movs	r3, r4
 	bl	sub_lshift_inner
@@ -571,43 +449,36 @@ const_reduce_basis_r2:
 
 .Lreduce_basis_cont5:
 	@ sp < 0
-	mov	r0, sp
+	add	r7, r5, r5, lsl #2
+	add	r0, sp, r7, lsl #3
 	add	r1, sp, #40
-	movs	r3, #40
-	muls	r3, r5
-	adds	r0, r3
-	subs	r1, r3
+	sub	r1, r1, r7, lsl #3
 	movs	r2, #5
 	movs	r3, r4
 	bl	add_lshift_inner
 	add	r0, sp, #20
+	add	r0, r0, r7, lsl #3
 	add	r1, sp, #60
-	movs	r3, #40
-	muls	r3, r5
-	adds	r0, r3
-	subs	r1, r3
+	sub	r1, r1, r7, lsl #3
 	movs	r2, #5
 	movs	r3, r4
 	bl	add_lshift_inner
 	add	r0, sp, #80
+	add	r0, r0, r5, lsl #6
 	add	r1, sp, #144
-	lsls	r3, r5, #6
-	adds	r0, r3
-	subs	r1, r3
+	sub	r1, r1, r5, lsl #6
 	movs	r2, r6
 	lsls	r3, r4, #1
 	bl	add_lshift_inner
 	add	r0, sp, #80
+	add	r0, r0, r5, lsl #6
 	add	r1, sp, #208
-	lsls	r3, r5, #6
-	adds	r0, r3
 	movs	r2, r6
 	adds	r3, r4, #1
 	bl	add_lshift_inner
 	add	r0, sp, #208
 	add	r1, sp, #144
-	lsls	r3, r5, #6
-	subs	r1, r3
+	sub	r1, r1, r5, lsl #6
 	movs	r2, r6
 	movs	r3, r4
 	bl	add_lshift_inner

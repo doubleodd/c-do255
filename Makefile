@@ -29,10 +29,10 @@ test_do255_w32: $(OBJ_DO255E_W32) $(OBJ_DO255S_W32) $(OBJ_ALG_DO255E) $(OBJ_ALG_
 test_do255_w64: $(OBJ_DO255E_W64) $(OBJ_DO255S_W64) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS)
 	$(LD) $(LDFLAGS) -o test_do255_w64 $(OBJ_DO255E_W64) $(OBJ_DO255S_W64) $(OBJ_ALG_DO255E) $(OBJ_ALG_DO255S) $(OBJ_TESTS) $(LIBS)
 
-alg_do255e.o: alg_do255e.c alg.c do255.h sha3.h
+alg_do255e.o: alg_do255e.c alg.c do255.h do255_alg.h sha3.h
 	$(CC) $(CFLAGS) -c -o alg_do255e.o alg_do255e.c
 
-alg_do255s.o: alg_do255s.c alg.c do255.h sha3.h
+alg_do255s.o: alg_do255s.c alg.c do255.h do255_alg.h sha3.h
 	$(CC) $(CFLAGS) -c -o alg_do255s.o alg_do255s.c
 
 do255e_bmi2.o: do255e_bmi2.c do255.h support.c gf_bmi2.c gf_do255e_bmi2.c sqrt_do255e_w64.c pcore_w64.c padd_do255e_w64.c icore_w64.c scalar_do255e_w64.c pmul_base_w64.c pmul_do255e_w64.c pvrfy_do255e_w64.c pmap_do255e_w64.c
